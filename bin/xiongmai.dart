@@ -218,7 +218,7 @@ class Xiongmai {
 
   Future reassembleBinPayload() async {
     try {
-      Completer<Map<String, dynamic>> completer = Completer<Map<String, dynamic>>();
+      Completer completer = Completer();
       Map<String,dynamic> reply = {"Ret": 101};
 
       List<int> data = []; 
@@ -229,41 +229,47 @@ class Xiongmai {
 
       int? limit;
 
-      streamSubscription = broadcast?.listen((event) { 
-        final int lendata = processReceivedData(event);
+      streamSubscription = broadcast
+        ?.timeout(Duration(seconds: 10))
+        .listen((event) { 
+          final int lendata = processReceivedData(event);
 
-        limit ??= lendata;
-        
-        data.addAll(event);
-
-        print("data added");
-        print("data progress ${data.length}");
-        print("limit is $limit");
-
-        if (data.length - 20 >= limit!) {
-          int frameLen = 0;
+          limit ??= lendata;
           
-          Uint8List? media;
-          frameLen = 8;
+          data.addAll(event);
 
-          ByteData byteData = ByteData.sublistView(Uint8List.fromList(data));
+          print("data added");
+          print("data progress ${data.length}");
+          print("limit is $limit");
 
-          int dataType = byteData.buffer.asByteData().getUint32(4, Endian.big);
+          if (data.length - 20 >= limit!) {
 
-          print(dataType);
+            data = data.sublist(20);
 
-          // Uint8List processedData =  Uint8List.fromList(data.sublist(20, limit! - 1 + 20));
-          // String jsonString = utf8.decode(processedData);
-          // Map<String, dynamic> jsonMap = json.decode(jsonString);
-          // reply = jsonMap;
-          // completer.complete(reply);
-          // streamSubscription?.cancel();
+            print("limit is $limit");
+
+            int frameLen = 0;
+            
+            Uint8List? media;
+            frameLen = 8;
+
+            Uint8List completeData = Uint8List.fromList(data);
+            ByteData byteData = completeData.buffer.asByteData();
+
+            int dataType = byteData.getUint32(0, Endian.big); 
+
+            if (dataType == 0xFFD8FFE0) {
+              print(completeData.first);
+              print(completeData.last);
+              completer.complete(completeData);
+            }
+          }
+        },
+        onError: (error) {
+          print(error);
+          completer.completeError("Timeout exception");
         }
-      },
-      onError: (error) {
-        print(error);
-      });
-
+      );
       return await completer.future;
     } catch (e) {
       print(e);
@@ -275,38 +281,38 @@ class Xiongmai {
     print('\nDisconnected 🛑');
   }
 
-  String? internalToType(int dataType, int value) {
-    if (dataType == 0x1FC || dataType == 0x1FD) {
-      if (value == 1) {
-        return "mpeg4";
-      } else if (value == 2) {
-        return "h264";
-      } else if (value == 3) {
-        return "h265";
-      }
-    } else if (dataType == 0x1F9) {
-      if (value == 1 || value == 6) {
-        return "info";
-      }
-    } else if (dataType == 0x1FA) {
-      if (value == 0xE) {
-        return "g711a";
-      }
-    } else if (dataType == 0x1FE && value == 0) {
-      return "jpeg";
-    }
-    return null;
-  }
+  // String? internalToType(int dataType, int value) {
+  //   if (dataType == 0x1FC || dataType == 0x1FD) {
+  //     if (value == 1) {
+  //       return "mpeg4";
+  //     } else if (value == 2) {
+  //       return "h264";
+  //     } else if (value == 3) {
+  //       return "h265";
+  //     }
+  //   } else if (dataType == 0x1F9) {
+  //     if (value == 1 || value == 6) {
+  //       return "info";
+  //     }
+  //   } else if (dataType == 0x1FA) {
+  //     if (value == 0xE) {
+  //       return "g711a";
+  //     }
+  //   } else if (dataType == 0x1FE && value == 0) {
+  //     return "jpeg";
+  //   }
+  //   return null;
+  // }
 
-  DateTime internalToDatetime(int value) {
-    int second = value & 0x3F;
-    int minute = (value & 0xFC0) >> 6;
-    int hour = (value & 0x1F000) >> 12;
-    int day = (value & 0x3E0000) >> 17;
-    int month = (value & 0x3C00000) >> 22;
-    int year = ((value & 0xFC000000) >> 26) + 2000;
-    return DateTime(year, month, day, hour, minute, second);
-  }
+  // DateTime internalToDatetime(int value) {
+  //   int second = value & 0x3F;
+  //   int minute = (value & 0xFC0) >> 6;
+  //   int hour = (value & 0x1F000) >> 12;
+  //   int day = (value & 0x3E0000) >> 17;
+  //   int month = (value & 0x3C00000) >> 22;
+  //   int year = ((value & 0xFC000000) >> 26) + 2000;
+  //   return DateTime(year, month, day, hour, minute, second);
+  // }
 }
 
 String uint8ListToHex(Uint8List data) {
